@@ -233,17 +233,22 @@ Variables globales pour l'état de la caméra :
 static float g_Phi = 0.0f;
 static float g_Theta = 0.0f;
 static float g_Radius = 15.0f;
-static double g_LastMouseX = 0.0, g_LastMouseY = 0.0;
+
+static double g_LastMouseX = 0.0;
+static double g_LastMouseY = 0.0;
 static bool g_MousePressed = false;
+
+const float PI = 3.14159265359f;
 ```
 
 Callback clic souris — on enregistre si le bouton gauche est pressé et la position initiale :
 
 ```cpp
-void OnMouseButton(GLFWwindow* win, int button, int action, int mods) {
+void OnMouseButton(GLFWwindow* window, int button, int action, int mods)
+{
     if (button == GLFW_MOUSE_BUTTON_LEFT) {
         g_MousePressed = (action == GLFW_PRESS);
-        glfwGetCursorPos(win, &g_LastMouseX, &g_LastMouseY);
+        glfwGetCursorPos(window, &g_LastMouseX, &g_LastMouseY);
     }
 }
 ```
@@ -251,16 +256,27 @@ void OnMouseButton(GLFWwindow* win, int button, int action, int mods) {
 Callback mouvement souris — on accumule les deltas dans phi et theta avec clamping :
 
 ```cpp
-void OnCursorPos(GLFWwindow* win, double xpos, double ypos) {
-    if (!g_MousePressed) return;
+void OnCursorPos(GLFWwindow* window, double xpos, double ypos)
+{
+    if (!g_MousePressed)
+        return;
+
     float dx = (float)(xpos - g_LastMouseX);
     float dy = (float)(ypos - g_LastMouseY);
-    g_Phi += dx * 0.005f;
+
+    g_Phi   += dx * 0.005f;
     g_Theta += dy * 0.005f;
-    if (g_Phi > 3.14159f) g_Phi -= 2.0f * 3.14159f;
-    if (g_Phi < -3.14159f) g_Phi += 2.0f * 3.14159f;
-    if (g_Theta > 3.14159f / 2.0f - 0.01f) g_Theta = 3.14159f / 2.0f - 0.01f;
-    if (g_Theta < -3.14159f / 2.0f + 0.01f) g_Theta = -3.14159f / 2.0f + 0.01f;
+
+    if (g_Phi > PI)
+        g_Phi -= 2.0f * PI;
+    if (g_Phi < -PI)
+        g_Phi += 2.0f * PI;
+
+    if (g_Theta > PI / 2.0f - 0.01f)
+        g_Theta = PI / 2.0f - 0.01f;
+    if (g_Theta < -PI / 2.0f + 0.01f)
+        g_Theta = -PI / 2.0f + 0.01f;
+
     g_LastMouseX = xpos;
     g_LastMouseY = ypos;
 }

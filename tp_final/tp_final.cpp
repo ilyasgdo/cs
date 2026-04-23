@@ -45,6 +45,7 @@ static double g_LastMouseX = 0.0;
 static double g_LastMouseY = 0.0;
 static bool g_MousePressed = false;
 
+const float PI = 3.14159265359f;
 
 void MatrixIdentity(float* m)
 {
@@ -105,7 +106,7 @@ void MatrixRotationZ(float* m, float angle)
 void MatrixPerspective(float* m, float fov, float aspect, float near, float far)
 {
     MatrixIdentity(m);
-    float f = 1.0f / tanf((fov * 3.14159f / 180.0f) / 2.0f);
+    float f = 1.0f / tanf((fov * PI / 180.0f) / 2.0f);
     m[0] = f / aspect;
     m[5] = f;
     m[10] = (far + near) / (near - far);
@@ -168,15 +169,15 @@ void OnCursorPos(GLFWwindow* window, double xpos, double ypos)
     g_Phi   += dx * 0.005f;
     g_Theta += dy * 0.005f;
 
-    if (g_Phi > 3.14159f)
-        g_Phi -= 2.0f * 3.14159f;
-    if (g_Phi < -3.14159f)
-        g_Phi += 2.0f * 3.14159f;
+    if (g_Phi > PI)
+        g_Phi -= 2.0f * PI;
+    if (g_Phi < -PI)
+        g_Phi += 2.0f * PI;
 
-    if (g_Theta > 3.14159f / 2.0f - 0.01f)
-        g_Theta = 3.14159f / 2.0f - 0.01f;
-    if (g_Theta < -3.14159f / 2.0f + 0.01f)
-        g_Theta = -3.14159f / 2.0f + 0.01f;
+    if (g_Theta > PI / 2.0f - 0.01f)
+        g_Theta = PI / 2.0f - 0.01f;
+    if (g_Theta < -PI / 2.0f + 0.01f)
+        g_Theta = -PI / 2.0f + 0.01f;
 
     g_LastMouseX = xpos;
     g_LastMouseY = ypos;
