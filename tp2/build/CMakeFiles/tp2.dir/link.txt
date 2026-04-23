@@ -1,0 +1,1 @@
+/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/tp2.dir/tp2.cpp.o CMakeFiles/tp2.dir/common/GLShader.cpp.o -o tp2  -Wl,-rpath,/opt/homebrew/lib /opt/homebrew/lib/libglfw.3.4.dylib -framework OpenGL

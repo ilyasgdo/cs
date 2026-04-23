@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.10)
+project(tp3)
+
+# La norme C++ à utiliser
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+# Trouve automatiquement les dossiers d'installation de GLFW et OpenGL (plus besoin de brew --prefix)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(OpenGL REQUIRED)
+
+# Indique le fichier source à compiler
+add_executable(tp3 tp3.cpp common/GLShader.cpp)
+
+target_include_directories(tp3 PRIVATE common)
+
+# Lie (link) notre exécutable avec GLFW et OpenGL
+target_link_libraries(tp3 PRIVATE glfw OpenGL::GL)

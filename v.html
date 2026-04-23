@@ -1,0 +1,150 @@
+from weasyprint import HTML
+import os
+
+# Contenu HTML du guide de setup
+html_content = """
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: A4;
+            margin: 20mm;
+            background-color: #f4f7f9;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            background-color: #0081fb;
+            color: white;
+            padding: 30px;
+            text-align: center;
+            border-radius: 0 0 15px 15px;
+            margin-bottom: 30px;
+        }
+        h1 { margin: 0; font-size: 22pt; }
+        h2 { 
+            color: #0081fb; 
+            border-left: 5px solid #0081fb; 
+            padding-left: 10px; 
+            font-size: 16pt;
+            margin-top: 25px;
+        }
+        h3 { color: #444; font-size: 13pt; margin-bottom: 5px; }
+        .step-box {
+            background-color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .important {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffecb5;
+            padding: 10px;
+            font-size: 10pt;
+            margin: 10px 0;
+        }
+        .tip {
+            background-color: #d1ecf1;
+            border-left: 5px solid #bee5eb;
+            padding: 10px;
+            font-size: 10pt;
+            margin: 10px 0;
+        }
+        code {
+            background-color: #eee;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        ul { padding-left: 20px; }
+        li { margin-bottom: 5px; }
+        .footer {
+            text-align: center;
+            font-size: 9pt;
+            color: #888;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Setup Unity & Meta Quest</h1>
+        <p>Guide de configuration rapide pour macOS</p>
+    </div>
+
+    <div class="step-box">
+        <h2>1. Préparation du Matériel & Compte</h2>
+        <ul>
+            <li><strong>Mode Développeur :</strong> Créer une organisation sur <code>dashboard.oculus.com</code>.</li>
+            <li><strong>Application Mobile :</strong> Dans l'app Meta Horizon (Smartphone), aller dans <i>Paramètres du casque > Mode Développeur</i> et l'activer.</li>
+            <li><strong>Logiciel INDISPENSABLE sur Mac :</strong> Installer le <b>Meta Quest Developer Hub (MQDH)</b> pour assurer la connexion USB.</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <h2>2. Configuration Unity Hub</h2>
+        <p>Dans l'onglet <b>Installs</b>, ajouter les modules suivants à votre version d'Unity :</p>
+        <ul>
+            <li><b>Android Build Support</b></li>
+            <li><b>Android SDK & NDK Tools</b></li>
+            <li><b>OpenJDK</b></li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <h2>3. Création du Projet</h2>
+        <ul>
+            <li>Utiliser le template <b>Universal 3D (URP)</b>.</li>
+            <li><b>File > Build Settings :</b> Sélectionner <i>Android</i> et cliquer sur <b>Switch Platform</b>.</li>
+            <li><b>Edit > Project Settings > XR Plug-in Management :</b>
+                <ul>
+                    <li>Cliquer sur <i>Install XR Plug-in Management</i>.</li>
+                    <li>Dans l'onglet Android (petit robot), cocher <b>Oculus</b>.</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <h2>4. Configuration de la Scène (VR Toolkit)</h2>
+        <ul>
+            <li><b>Window > Package Manager :</b> Installer <b>XR Interaction Toolkit</b> (choisir <i>Unity Registry</i>).</li>
+            <li><i>Note : Accepter le redémarrage d'Unity pour le nouveau "Input System".</i></li>
+            <li><b>Hierarchy :</b> Supprimer la <i>Main Camera</i>.</li>
+            <li><b>Hierarchy :</b> Clic droit > XR > <b>XR Origin (VR)</b>.</li>
+        </ul>
+    </div>
+
+    <div class="step-box">
+        <h2>5. Build and Run</h2>
+        <ol>
+            <li>Brancher le casque au Mac via USB-C.</li>
+            <li>Vérifier dans le casque l'autorisation de <b>Débogage USB</b>.</li>
+            <li>Dans Unity (<i>Build Settings</i>), cliquer sur <b>Refresh</b> à côté de <i>Run Device</i>.</li>
+            <li>Sélectionner le casque et cliquer sur <b>Build and Run</b>.</li>
+        </ol>
+        <div class="tip">
+            <b>Astuce Mac :</b> Si le casque n'est pas détecté, ouvrez le Meta Quest Developer Hub. Une fois que le point est vert dans MQDH, il apparaîtra dans Unity.
+        </div>
+    </div>
+
+    <div class="footer">
+        Document généré pour le développement VR sur Meta Quest - macOS
+    </div>
+</body>
+</html>
+"""
+
+# Sauvegarde et conversion
+with open("Guide_Setup_Quest_Mac.html", "w") as f:
+    f.write(html_content)
+
+HTML(filename="Guide_Setup_Quest_Mac.html").write_pdf("Guide_Setup_Unity_Quest_Mac.pdf")
