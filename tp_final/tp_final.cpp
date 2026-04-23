@@ -7,30 +7,11 @@
 #include <cmath>
 #include "dragoondata.h"
 
-const GLfloat cube_vertices[] = {
-    -1.0, -1.0,  1.0,   1.0, -1.0,  1.0,   1.0,  1.0,  1.0,  -1.0,  1.0,  1.0,
-    -1.0, -1.0, -1.0,   1.0, -1.0, -1.0,   1.0,  1.0, -1.0,  -1.0,  1.0, -1.0
-};
-
-const GLushort cube_elements[] = {
-    0,1,2, 2,3,0,
-    1,5,6, 6,2,1,
-    7,6,5, 5,4,7,
-    4,0,3, 3,7,4,
-    4,5,1, 1,0,4,
-    3,2,6, 6,7,3
-};
-
-GLfloat g_CubeData[36 * 8];
-
 GLShader g_BasicShader;
 
 GLuint g_DragonVAO = 0;
 GLuint g_DragonVBO = 0;
 GLuint g_DragonEBO = 0;
-
-GLuint g_CubeVAO = 0;
-GLuint g_CubeVBO = 0;
 
 GLuint g_Texture = 0;
 
@@ -251,73 +232,7 @@ bool Initialise()
         glVertexAttribPointer(lt, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     }
 
-    // --- Cube (generation des normales par produit vectoriel) ---
 
-    for(int i = 0; i < 12; i++)
-    {
-        int i0 = cube_elements[i * 3 + 0] * 3;
-        int i1 = cube_elements[i * 3 + 1] * 3;
-        int i2 = cube_elements[i * 3 + 2] * 3;
-
-        float p0[3] = { cube_vertices[i0], cube_vertices[i0+1], cube_vertices[i0+2] };
-        float p1[3] = { cube_vertices[i1], cube_vertices[i1+1], cube_vertices[i1+2] };
-        float p2[3] = { cube_vertices[i2], cube_vertices[i2+1], cube_vertices[i2+2] };
-
-        float u[3] = { p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2] };
-        float v[3] = { p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2] };
-
-        float n[3];
-        n[0] = u[1]*v[2] - u[2]*v[1];
-        n[1] = u[2]*v[0] - u[0]*v[2];
-        n[2] = u[0]*v[1] - u[1]*v[0];
-
-        float len = sqrtf(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
-        if(len > 0){
-            n[0] /= len;
-            n[1] /= len;
-            n[2] /= len;
-        }
-
-        for(int j = 0; j < 3; j++)
-        {
-            float *p;
-            if(j == 0) p = p0;
-            else if(j == 1) p = p1;
-            else p = p2;
-
-            int base = (i * 3 + j) * 8;
-            g_CubeData[base + 0] = p[0];
-            g_CubeData[base + 1] = p[1];
-            g_CubeData[base + 2] = p[2];
-            g_CubeData[base + 3] = n[0];
-            g_CubeData[base + 4] = n[1];
-            g_CubeData[base + 5] = n[2];
-            g_CubeData[base + 6] = (j == 1 || (i % 2 == 0 && j == 2)) ? 1.0f : 0.0f;
-            g_CubeData[base + 7] = (j == 2) ? 1.0f : 0.0f;
-        }
-    }
-
-    glGenVertexArrays(1, &g_CubeVAO);
-    glBindVertexArray(g_CubeVAO);
-
-    glGenBuffers(1, &g_CubeVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, g_CubeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(g_CubeData), g_CubeData, GL_STATIC_DRAW);
-
-    if(lp >= 0){
-        glEnableVertexAttribArray(lp);
-        glVertexAttribPointer(lp, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-    }
-    if(ln >= 0){
-        glEnableVertexAttribArray(ln);
-        glVertexAttribPointer(ln, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-    }
-    if(lt >= 0){
-        glEnableVertexAttribArray(lt);
-        glVertexAttribPointer(lt, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    }
-
-    glBindVertexArray(0);
 
     return true;
 }
@@ -373,26 +288,7 @@ void Render(float time)
     glBindVertexArray(g_DragonVAO);
     glDrawElements(GL_TRIANGLES, 45000, GL_UNSIGNED_SHORT, 0);
 
-    // --- cube ---
 
-    float worldCube[16], tCube[16], rotX[16], rotY[16], rotZ[16];
-    float tmp[16], tmp2[16];
-    MatrixTranslation(tCube, -4.0f, 0.0f, 0.0f);
-    MatrixRotationY(rotY, time);
-    MatrixRotationX(rotX, time * 0.5f);
-    MatrixRotationZ(rotZ, time * 0.25f);
-    MatrixMultiply(tmp, rotX, rotY);
-    MatrixMultiply(tmp2, rotZ, tmp);
-    MatrixMultiply(worldCube, tCube, tmp2);
-
-    glUniformMatrix4fv(glGetUniformLocation(prog, "u_Model"), 1, GL_FALSE, worldCube);
-    glUniform3f(glGetUniformLocation(prog, "u_material.ambientColor"), 0.15f, 0.15f, 0.15f);
-    glUniform3f(glGetUniformLocation(prog, "u_material.diffuseColor"), 0.8f, 0.1f, 0.1f);
-    glUniform3f(glGetUniformLocation(prog, "u_material.specularColor"), 1.0f, 0.8f, 0.8f);
-    glUniform1f(glGetUniformLocation(prog, "u_material.shininess"), 128.0f);
-
-    glBindVertexArray(g_CubeVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 36);
 }
 
 
@@ -434,8 +330,7 @@ int main(void)
     glDeleteBuffers(1, &g_DragonVBO);
     glDeleteBuffers(1, &g_DragonEBO);
     glDeleteVertexArrays(1, &g_DragonVAO);
-    glDeleteBuffers(1, &g_CubeVBO);
-    glDeleteVertexArrays(1, &g_CubeVAO);
+
     glDeleteTextures(1, &g_Texture);
 
     glfwTerminate();

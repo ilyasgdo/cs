@@ -102,20 +102,6 @@ MatrixMultiply(worldDragon, tDragon, rDragon);
 glUniformMatrix4fv(glGetUniformLocation(prog, "u_Model"), 1, GL_FALSE, worldDragon);
 \end{lstlisting}
 
-Pour le cube avec trois rotations combinées :
-
-\begin{lstlisting}[language=C++]
-float worldCube[16], tCube[16], rotX[16], rotY[16], rotZ[16];
-float tmp[16], tmp2[16];
-MatrixTranslation(tCube, -4.0f, 0.0f, 0.0f);
-MatrixRotationY(rotY, time);
-MatrixRotationX(rotX, time * 0.5f);
-MatrixRotationZ(rotZ, time * 0.25f);
-MatrixMultiply(tmp, rotX, rotY);
-MatrixMultiply(tmp2, rotZ, tmp);
-MatrixMultiply(worldCube, tCube, tmp2);
-\end{lstlisting}
-
 Cela réduit à une seule matrice uniform envoyée au GPU au lieu de plusieurs matrices séparées.
 
 Les fonctions de base utilisées :
