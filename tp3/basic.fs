@@ -1,46 +1,67 @@
 #version 330 core
 
-// Variables d'entrée (doivent correspondre parfaitement aux "out" du Vertex Shader)
 in vec3 v_Position;
 in vec3 v_Normal;
 in vec2 v_TexCoords;
 
-// Sortie finale (la couleur du pixel à l'écran)
 out vec4 FragColor;
 
 struct Light {
     vec3 direction;
-    vec3 ambientColor;
     vec3 diffuseColor;
     vec3 specularColor;
 };
 
+struct Material {
+    vec3 ambientColor; // Utilisé comme intensité globale Ia 
+    vec3 diffuseColor;
+    vec3 specularColor;
+    float shininess;
+};
+
 uniform Light u_light;
+uniform Material u_material;
 uniform vec3 u_CameraPos;
-uniform sampler2D u_diffuseMap; // Pour lire la texture
+uniform sampler2D u_diffuseMap;
+
+// Variables du TP 05 (Ambiance Hémisphérique) [cite: 2291]
+uniform vec3 u_SkyDirection;
+uniform vec3 u_SkyColor;
+uniform vec3 u_GroundColor;
+
+// Exercice 1 : Loi de Lambert [cite: 2375]
+vec3 diffuse(vec3 N, vec3 L) {
+    float NdotL = max(dot(N, L), 0.0);
+    return NdotL * u_light.diffuseColor * u_material.diffuseColor;
+}
+
+// Exercice 3 : Blinn-Phong [cite: 2468]
+vec3 specular(vec3 N, vec3 L, vec3 V) {
+    vec3 H = normalize(L + V); // Half-vector [cite: 2467]
+    float NdotH = max(dot(N, H), 0.0);
+    return pow(NdotH, u_material.shininess) * u_light.specularColor * u_material.specularColor;
+}
 
 void main() {
-    vec3 N = normalize(v_Normal);
+    vec3 N = normalize(v_Normal); // Renormalisation obligatoire [cite: 2388]
     vec3 L = normalize(u_light.direction);
     vec3 V = normalize(u_CameraPos - v_Position);
     
-    // Récupération de la couleur de la texture aux coordonnées UV
+    // Lecture texture (sera linéarisée par le GPU via GL_SRGB8) [cite: 2277]
     vec3 texColor = texture(u_diffuseMap, v_TexCoords).rgb;
     
-    // --- Illumination avec la couleur de la texture ---
-    // Ambiant
-    vec3 ambient = u_light.ambientColor * texColor;
+    // 1. Ambiance Hémisphérique [cite: 2296, 2299]
+    float HemisphereFactor = dot(N, normalize(u_SkyDirection)) * 0.5 + 0.5;
+    vec3 ambient = u_material.ambientColor * mix(u_GroundColor, u_SkyColor, HemisphereFactor) * texColor;
     
-    // Diffus (Lambert)
-    float NdotL = max(dot(N, L), 0.0);
-    vec3 diffuse = NdotL * u_light.diffuseColor * texColor;
-    
-    // Spéculaire (Blinn-Phong)
+    // 2. Diffus et Spéculaire
+    vec3 diff = diffuse(N, L) * texColor;
     vec3 spec = vec3(0.0);
-    if (NdotL > 0.0) {
-        vec3 H = normalize(L + V);
-        spec = pow(max(dot(N, H), 0.0), 32.0) * u_light.specularColor;
+    if (dot(N, L) > 0.0) {
+        spec = specular(N, L, V);
     }
     
-    FragColor = vec4(ambient + diffuse + spec, 1.0);
+    // Somme finale [cite: 2300]
+    FragColor = vec4(ambient + diff + spec, 1.0);
+    // Note : La correction Gamma finale est gérée par GL_FRAMEBUFFER_SRGB [cite: 2279]
 }
