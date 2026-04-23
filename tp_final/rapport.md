@@ -264,81 +264,140 @@ glUniform3f(glGetUniformLocation(prog, "u_CameraPos"), camX, camY, camZ);
 
 ---
 
-## TP 05 — Correction Gamma
+## TP 05 — Partie 3 : Correction Gamma
 
-### Exercice 3.1 — Correction gamma manuelle dans le shader
+### Contexte — Le problème de la colorimétrie
 
-Les couleurs stockées dans les images (PNG, JPEG) sont en sRGB, donc non-linéaires (gamma ≈ 2.2). Les opérations d'éclairage sont des opérations linéaires. Il faut donc linéariser les entrées et compresser la sortie.
+Les couleurs affichées sur un moniteur sont dites "perceptuelles". Le moniteur convertit le courant en intensité lumineuse à travers une loi de puissance (pow). Le facteur de puissance est appelé **gamma**. La plupart des moniteurs ont un gamma compris entre 1.8 et 2.4. La norme sRGB (Microsoft & HP) fixe le gamma approximativement à **2.2**.
 
-**En entrée** — linéariser les textures en appliquant `pow(color, 2.2)` :
+Cela signifie deux choses :
+- Les moniteurs n'ont pas une réponse linéaire : l'intensité croît en suivant une courbe de puissance
+- Cette courbe distribue plus de valeurs aux extrémités (noirs et blancs), ce qui correspond mieux à la perception humaine
+
+Le problème pour le programmeur : les opérations mathématiques (addition, multiplication dans les shaders) sont linéaires, mais les couleurs des pixels sont non-linéaires (compressées gamma).
+
+### Ce qu'il faut retenir
+
+- Le moniteur applique toujours une **décompression gamma** (mise à la puissance gamma)
+- Une couleur visible sur un moniteur est donc toujours **non-linéaire**
+- Les images (PNG, JPEG) stockent les couleurs avec une **compression gamma** (non-linéaire, sRGB 2.2)
+- Une couleur compressée gamma traitée par un moniteur redevient **linéaire**
+
+### Comment savoir si une couleur est linéaire ?
+
+- Si la couleur a été **dessinée** (image) ou **capturée** (color picker) → elle est **non-linéaire**
+- Si la couleur a été **générée par une équation** (normal maps, occlusion maps) → elle est **linéaire**
+
+Les couleurs passées en uniform (matériaux, lumières) qui ont été choisies visuellement sont **non-linéaires** et doivent être linéarisées.
+
+---
+
+### Exercice 3.1 — Correction gamma manuelle dans le Fragment Shader
+
+L'exercice demande d'appliquer les corrections gamma en lecture et en écriture dans le Fragment Shader.
+
+**En lecture** — une couleur non-linéaire (texture sRGB) doit être linéarisée en appliquant la puissance 2.2. La couleur source non-linéaire = `couleur^(1/2.2)`, donc pour la linéariser on applique l'inverse `couleur^2.2` :
 
 ```glsl
 vec3 texColor = pow(texture(u_diffuseMap, v_TexCoords).rgb, vec3(2.2));
 ```
 
-**En sortie** — compresser en appliquant `pow(color, 1.0/2.2)` :
+De même pour les couleurs de matériaux passées en uniform et choisies visuellement :
 
 ```glsl
+vec3 matDiffuse = pow(u_material.diffuseColor, vec3(2.2));
+```
+
+**En écriture** — comme le moniteur applique automatiquement une décompression gamma, si la couleur en sortie du shader est linéaire (résultat de nos calculs d'éclairage), il faut appliquer une compression gamma de `1.0/2.2` :
+
+```glsl
+vec3 finalColor = ambient + diff + spec;
 FragColor = vec4(pow(finalColor, vec3(1.0/2.2)), 1.0);
 ```
 
-Les couleurs passées en uniform (matériaux, lumières) qui ont été choisies visuellement (color picker, éditeur) sont aussi non-linéaires et doivent être linéarisées de la même façon.
-
 ---
 
-### Exercice 3.2 — Correction gamma automatique OpenGL
+### Exercice 3.2 — Correction gamma automatique avec les fonctions OpenGL
 
-Le GPU peut gérer les conversions automatiquement, ce qui évite les `pow()` dans le shader. C'est la méthode utilisée dans l'implémentation finale.
+Les GPUs sont capables d'effectuer ces conversions automatiquement pour les color buffers et les textures. C'est la méthode utilisée dans notre implémentation finale.
 
-**En entrée** — format interne sRGB pour les textures. Le GPU linéarise automatiquement lors de l'échantillonnage :
+**En lecture** — on force la conversion automatique d'une texture lors de l'échantillonnage en spécifiant un format interne sRGB. Le GPU linéarise automatiquement les texels :
 
 ```cpp
 glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
 ```
 
-Note : avec `GL_SRGB8_ALPHA8`, la composante Alpha reste linéaire.
+Avec alpha, on utilise `GL_SRGB8_ALPHA8`. La composante Alpha reste toujours linéaire (séparée de SRGB8).
 
-**En sortie** — activer la conversion automatique linéaire → sRGB dans le framebuffer :
+**En sortie** — on force les écritures dans le color buffer à convertir automatiquement de linéaire vers gamma :
 
 ```cpp
 glEnable(GL_FRAMEBUFFER_SRGB);
 ```
 
-Avec ces deux options, aucune correction manuelle dans le shader n'est nécessaire.
+Avec ces deux fonctions OpenGL, aucun `pow()` dans le shader n'est nécessaire pour les textures ni pour le framebuffer.
+
+**Note importante** : les couleurs passées en uniform (matériaux, lumières) ne sont **pas** corrigées automatiquement par le GPU. Si elles ont été choisies visuellement, il faudrait les linéariser manuellement dans le shader ou les passer déjà linéarisées depuis le C++.
+
+Notre implémentation dans `Initialise()` :
+
+```cpp
+glEnable(GL_FRAMEBUFFER_SRGB);
+
+glGenTextures(1, &g_Texture);
+glBindTexture(GL_TEXTURE_2D, g_Texture);
+GLubyte texData[] = { 255,255,255, 0,0,0, 0,0,0, 255,255,255 };
+glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+```
 
 ---
 
-## TP 05 — Illumination ambiante hémisphérique
+## TP 05 — Partie 2 : Illumination ambiante hémisphérique
 
-### 2. Ambient hémisphérique
+### Contexte
 
-Au lieu d'appliquer une couleur ambiante uniforme, on mélange deux couleurs : SkyColor (hémisphère haut, le ciel) et GroundColor (hémisphère bas, le sol).
+Dans le TP illumination précédent on a implémenté le modèle de Phong avec une composante ambiante uniforme. Ici on remplace cette ambiance uniforme par une illumination hémisphérique qui combine deux couleurs :
+- **SkyColor** pour l'hémisphère "up" (le ciel)
+- **GroundColor** pour l'hémisphère "down" (le sol)
 
-On utilise le produit scalaire entre la normale N du fragment et la direction du ciel (SkyDirection, typiquement (0,1,0)). Ce produit scalaire est dans [-1, +1], on le reparamètre en [0, 1] :
+### Principe
+
+La technique utilise un vecteur de référence SkyDirection (typiquement `(0, 1, 0)`) et le produit scalaire entre la normale du fragment et ce vecteur.
+
+Le produit scalaire `dot(N, SkyDirection)` est dans `[-1, +1]` quand les vecteurs sont normalisés. Pour faciliter le mixage des couleurs, on reparamètre le résultat de sorte que le domaine soit `[0, 1]` :
 
 **HemisphereFactor = NdotSky × 0.5 + 0.5**
 
-Puis on interpole avec `mix()` :
+On utilise ensuite la fonction `mix()` du GLSL qui interpole linéairement deux couleurs :
+
+**AmbientColor = Ia × mix(GroundColor, SkyColor, HemisphereFactor)**
+
+### Implémentation dans le Fragment Shader
 
 ```glsl
 float HemisphereFactor = dot(N, normalize(u_SkyDirection)) * 0.5 + 0.5;
 vec3 ambient = u_material.ambientColor * mix(u_GroundColor, u_SkyColor, HemisphereFactor) * texColor;
 ```
 
-La couleur finale combine les trois composantes :
+La couleur finale combine les trois composantes du modèle de Phong :
 
 ```glsl
 vec3 FinalColor = Ambient + Diffuse + Specular;
 FragColor = vec4(FinalColor, 1.0);
 ```
 
-Uniforms passés depuis le C++ :
+### Uniforms passés depuis le C++
 
 ```cpp
 glUniform3f(glGetUniformLocation(prog, "u_SkyDirection"), 0, 1, 0);
 glUniform3f(glGetUniformLocation(prog, "u_SkyColor"), 0.6f, 0.8f, 1.0f);
 glUniform3f(glGetUniformLocation(prog, "u_GroundColor"), 0.2f, 0.2f, 0.1f);
 ```
+
+Le résultat est une ambiance qui varie naturellement : les faces orientées vers le haut reçoivent la couleur du ciel, celles vers le bas la couleur du sol, et celles horizontales reçoivent un mélange des deux.
 
 ---
 
