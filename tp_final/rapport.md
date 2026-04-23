@@ -1,16 +1,138 @@
-# Rapport TP Final — Préparation au Projet + TP 05 Gamma & Ambient
+# Rapport TP — Préparation à la soutenance
 
 ---
 
-## Exercice 2.1 — Fonction LookAt (View Matrix)
+## Partie 1 — Matrices monde
 
-La View Matrix transforme les coordonnées du repère monde vers le repère de la caméra.
-Elle est l'inverse de la World Matrix de la caméra.
+### Exercice 1.1 — Multiplication de deux matrices
 
-Pour la construire on calcule trois vecteurs orthonormaux à partir de la position de l'œil, d'une cible et d'un vecteur up de référence, puis on les assemble dans une matrice avec les produits scalaires formant la translation inverse.
+L'exercice demande d'implémenter une fonction multipliant deux matrices homogènes 4×4 stockées en colonnes (column-major). Chaque élément du résultat est la somme des produits ligne×colonne. On utilise un tableau temporaire pour permettre le cas `out == a` ou `out == b`.
 
 ```cpp
-void LookAt(float* m, float ex, float ey, float ez, float tx, float ty, float tz, float ux, float uy, float uz) {
+void MatrixMultiply(float* out, const float* a, const float* b) {
+    float temp[16];
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 4; ++r)
+            temp[c*4+r] = a[0*4+r]*b[c*4+0] + a[1*4+r]*b[c*4+1]
+                        + a[2*4+r]*b[c*4+2] + a[3*4+r]*b[c*4+3];
+    for (int i = 0; i < 16; ++i) out[i] = temp[i];
+}
+```
+
+Le stockage column-major signifie que l'indice `[colonne*4 + ligne]` donne l'élément à la ligne `ligne` et colonne `colonne`. La première colonne occupe les indices 0-3, la deuxième 4-7, etc.
+
+---
+
+### Exercice 1.2 — World Matrix unique
+
+L'exercice demande de remplacer les matrices de transformation séparées par une unique World Matrix. L'ordre de concaténation est (de droite à gauche) :
+
+**WorldMatrix = Translation × Rotation × Scale**
+
+Dans notre cas, pour le dragon qui tourne autour de Y et est translaté :
+
+```cpp
+float mD[16], tD[16], rD[16];
+MatrixTranslation(tD, 4, -4, 0);
+MatrixRotationY(rD, time * 0.5f);
+MatrixMultiply(mD, tD, rD);
+```
+
+`mD` est la World Matrix finale envoyée au shader en un seul appel :
+
+```cpp
+glUniformMatrix4fv(glGetUniformLocation(prog, "u_Model"), 1, GL_FALSE, mD);
+```
+
+Pour le cube avec trois rotations combinées :
+
+```cpp
+float mC[16], tC[16], rX[16], rY[16], rZ[16], tmp[16], rt[16];
+MatrixTranslation(tC, -4, 0, 0);
+MatrixRotationY(rY, time);
+MatrixRotationX(rX, time * 0.5f);
+MatrixRotationZ(rZ, time * 0.25f);
+MatrixMultiply(tmp, rX, rY);
+MatrixMultiply(rt, rZ, tmp);
+MatrixMultiply(mC, tC, rt);
+```
+
+Cela réduit à une seule matrice uniform envoyée au GPU au lieu de plusieurs matrices séparées.
+
+Les fonctions de base utilisées :
+
+```cpp
+void MatrixIdentity(float* m) {
+    for (int i = 0; i < 16; ++i) m[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+}
+
+void MatrixTranslation(float* m, float tx, float ty, float tz) {
+    MatrixIdentity(m); m[12] = tx; m[13] = ty; m[14] = tz;
+}
+
+void MatrixRotationY(float* m, float angle) {
+    MatrixIdentity(m);
+    float c = cos(angle), s = sin(angle);
+    m[0] = c; m[8] = s; m[2] = -s; m[10] = c;
+}
+
+void MatrixRotationX(float* m, float angle) {
+    MatrixIdentity(m);
+    float c = cos(angle), s = sin(angle);
+    m[5] = c; m[9] = -s; m[6] = s; m[10] = c;
+}
+
+void MatrixRotationZ(float* m, float angle) {
+    MatrixIdentity(m);
+    float c = cos(angle), s = sin(angle);
+    m[0] = c; m[4] = -s; m[1] = s; m[5] = c;
+}
+```
+
+---
+
+### Normal Matrix (Eq 1.2)
+
+La normale doit être transformée par la transposée de l'inverse de la World Matrix :
+
+**NormalMatrix = (WorldMatrix⁻¹)ᵀ**
+
+La translation n'a pas de sens pour une normale (composante w = 0 en homogène). Le plus simple est de convertir la WorldMatrix en `mat3`, ce qui élimine la translation. Tant que la World Matrix ne contient pas de scale non-uniforme, `mat3(WorldMatrix)` est suffisant car pour une matrice orthogonale `M⁻¹ = Mᵀ` donc `(M⁻¹)ᵀ = M`.
+
+Dans le Vertex Shader :
+
+```glsl
+v_Normal = mat3(u_Model) * a_normal;
+```
+
+---
+
+## Partie 2 — Matrice vue
+
+### Exercice 2.1 — Fonction LookAt
+
+La View Matrix transforme du repère monde vers le repère de la caméra. C'est l'inverse de la World Matrix de la caméra. Comme la caméra n'a pas de scale, c'est une transformation orthogonale et on peut calculer l'inverse simplement :
+
+**ViewMatrix = RotationMatrixᵀ_cam × TranslationMatrix⁻¹_cam**
+
+La fonction LookAt prend trois paramètres : position de l'œil, position de la cible, vecteur up de référence.
+
+Les 5 étapes de construction :
+
+**Étape 1** — Vecteur `forward` : c'est `normalize(-(target - eye))`. Le signe moins vient du repère main droite où forward pointe hors de l'écran.
+
+**Étape 2** — Vecteur `right` : produit vectoriel `cross(up, forward)` normalisé. Règle de la main droite : up sur l'index, forward sur le majeur, right est indiqué par le pouce.
+
+**Étape 3** — Vecteur `up corrigé` : produit vectoriel `cross(forward, right)`. Forward sur le pouce, right sur l'index, up corrigé est indiqué par le majeur.
+
+**Étape 4** — Trois produits scalaires : projection de `-position` dans le repère local de la caméra. Chaque produit scalaire entre la position et un des trois vecteurs (right, up, forward) donne la composante de translation inverse.
+
+**Étape 5** — Assemblage : les 3 premières colonnes contiennent la transposée des 3 vecteurs (première colonne = toutes les composantes x, etc.), la 4ème colonne contient les produits scalaires.
+
+```cpp
+void LookAt(float* m, float ex, float ey, float ez,
+            float tx, float ty, float tz,
+            float ux, float uy, float uz) {
     float fx = -(tx - ex), fy = -(ty - ey), fz = -(tz - ez);
     float fl = sqrt(fx*fx + fy*fy + fz*fz);
     fx /= fl; fy /= fl; fz /= fl;
@@ -29,38 +151,54 @@ void LookAt(float* m, float ex, float ey, float ez, float tx, float ty, float tz
 }
 ```
 
-**Étapes :**
-1. `forward` = `normalize(-(target - eye))` — pointe hors de l'écran (repère main droite)
-2. `right` = `normalize(cross(up, forward))` — axe horizontal
-3. `up corrigé` = `cross(forward, right)` — axe vertical recalculé
-4. La 4ème colonne contient `-dot(axe, eye)` pour chaque axe — c'est la projection de la position dans le repère caméra, inversée
-
-**Dans le Vertex Shader :** la View Matrix est appliquée après la Model Matrix mais avant la Projection, uniquement sur la position (pas sur les normales qui restent en espace monde).
+La View Matrix est passée au Vertex Shader et appliquée à la position uniquement (après la World Matrix, avant la Projection). Les normales restent en espace monde pour les calculs d'illumination.
 
 ```glsl
-gl_Position = u_Projection * u_View * u_Model * vec4(a_position, 1.0);
+void main() {
+    vec4 worldPos = u_Model * vec4(a_position, 1.0);
+    v_Position = worldPos.xyz;
+    v_Normal = mat3(u_Model) * a_normal;
+    v_TexCoords = a_texcoords;
+    gl_Position = u_Projection * u_View * worldPos;
+}
 ```
 
-Les normales sont transformées par `mat3(u_Model)` seulement car la View Matrix n'a pas de sens pour les normales (elles doivent rester en world space pour l'illumination).
+La chaîne complète de transformation est donc : `gl_Position = Projection × View × Model × vertex`
 
 ---
 
-## Caméra orbitale (arcball)
+## TP à rendre — Caméra orbitale
 
-La position de la caméra est sur une sphère de rayon R centrée sur la cible. Les coordonnées sphériques (R, phi, theta) sont converties en cartésiennes :
+### 1. Caméra orbitale
 
-```cpp
-float camX = g_Radius * cos(g_Theta) * cos(g_Phi);
-float camY = g_Radius * sin(g_Theta);
-float camZ = g_Radius * cos(g_Theta) * sin(g_Phi);
+La caméra est positionnée sur une sphère de rayon R centrée sur la cible. On raisonne en coordonnées sphériques (R, phi, theta) contrôlées par la souris.
+
+**Formules de conversion sphérique → cartésien** (du cours) :
+
+```
+X = R × cos(Theta) × cos(Phi)
+Y = R × sin(Theta)
+Z = R × cos(Theta) × sin(Phi)
 ```
 
-**Contrôles :**
-- Clic gauche + déplacement horizontal → modifie `phi` (azimut)
-- Clic gauche + déplacement vertical → modifie `theta` (élévation)
-- Molette → modifie `R` (distance)
+**Contrôles GLFW :**
+- Axe horizontal de la souris → phi (azimut, rotation autour de Y)
+- Axe vertical de la souris → theta (élévation)
+- Molette → R (distance caméra-cible)
 
-**Limites :** phi ∈ (-π, +π), theta ∈ (-π/2, +π/2) pour éviter le retournement.
+**Limites d'angles :** phi ∈ (-π, +π) et theta ∈ (-π/2, +π/2) pour éviter le retournement de la caméra.
+
+Variables globales pour l'état de la caméra :
+
+```cpp
+static float g_Phi = 0.0f;
+static float g_Theta = 0.0f;
+static float g_Radius = 15.0f;
+static double g_LastMouseX = 0.0, g_LastMouseY = 0.0;
+static bool g_MousePressed = false;
+```
+
+Callback clic souris — on enregistre si le bouton gauche est pressé et la position initiale :
 
 ```cpp
 void OnMouseButton(GLFWwindow* win, int button, int action, int mods) {
@@ -69,7 +207,11 @@ void OnMouseButton(GLFWwindow* win, int button, int action, int mods) {
         glfwGetCursorPos(win, &g_LastMouseX, &g_LastMouseY);
     }
 }
+```
 
+Callback mouvement souris — on accumule les deltas dans phi et theta avec clamping :
+
+```cpp
 void OnCursorPos(GLFWwindow* win, double xpos, double ypos) {
     if (!g_MousePressed) return;
     float dx = (float)(xpos - g_LastMouseX);
@@ -83,7 +225,11 @@ void OnCursorPos(GLFWwindow* win, double xpos, double ypos) {
     g_LastMouseX = xpos;
     g_LastMouseY = ypos;
 }
+```
 
+Callback molette — on modifie le rayon R :
+
+```cpp
 void OnScroll(GLFWwindow* win, double xoff, double yoff) {
     g_Radius -= (float)yoff;
     if (g_Radius < 1.0f) g_Radius = 1.0f;
@@ -91,189 +237,107 @@ void OnScroll(GLFWwindow* win, double xoff, double yoff) {
 }
 ```
 
-La caméra utilise ensuite `LookAt(view, camX, camY, camZ, 0, 0, 0, 0, 1, 0)` en ciblant l'origine.
+Enregistrement des callbacks dans le main :
 
-La position caméra est aussi passée au shader pour le calcul du spéculaire :
+```cpp
+glfwSetMouseButtonCallback(win, OnMouseButton);
+glfwSetCursorPosCallback(win, OnCursorPos);
+glfwSetScrollCallback(win, OnScroll);
+```
+
+Utilisation dans le rendu — conversion sphérique → cartésien puis appel à LookAt avec target à l'origine :
+
+```cpp
+float camX = g_Radius * cos(g_Theta) * cos(g_Phi);
+float camY = g_Radius * sin(g_Theta);
+float camZ = g_Radius * cos(g_Theta) * sin(g_Phi);
+
+float view[16];
+LookAt(view, camX, camY, camZ, 0, 0, 0, 0, 1, 0);
+```
+
+La position de la caméra est aussi passée au shader pour le calcul de la composante spéculaire (direction de l'observateur V) :
+
 ```cpp
 glUniform3f(glGetUniformLocation(prog, "u_CameraPos"), camX, camY, camZ);
 ```
 
 ---
 
-## Exercice 3.1 — Correction Gamma manuelle (dans le shader)
+## TP 05 — Correction Gamma
 
-Les textures et couleurs provenant d'images sont stockées en sRGB (non-linéaire, gamma ≈ 2.2). Les opérations d'éclairage nécessitent des couleurs linéaires.
+### Exercice 3.1 — Correction gamma manuelle dans le shader
 
-**En entrée** : linéariser avec `pow(color, vec3(2.2))`
-**En sortie** : compresser avec `pow(color, vec3(1.0/2.2))`
+Les couleurs stockées dans les images (PNG, JPEG) sont en sRGB, donc non-linéaires (gamma ≈ 2.2). Les opérations d'éclairage sont des opérations linéaires. Il faut donc linéariser les entrées et compresser la sortie.
+
+**En entrée** — linéariser les textures en appliquant `pow(color, 2.2)` :
 
 ```glsl
-vec3 texColor = pow(texture(u_sampler, v_TexCoords).rgb, vec3(2.2));
-// ... calculs d'illumination ...
+vec3 texColor = pow(texture(u_diffuseMap, v_TexCoords).rgb, vec3(2.2));
+```
+
+**En sortie** — compresser en appliquant `pow(color, 1.0/2.2)` :
+
+```glsl
 FragColor = vec4(pow(finalColor, vec3(1.0/2.2)), 1.0);
 ```
 
+Les couleurs passées en uniform (matériaux, lumières) qui ont été choisies visuellement (color picker, éditeur) sont aussi non-linéaires et doivent être linéarisées de la même façon.
+
 ---
 
-## Exercice 3.2 — Correction Gamma automatique (GL_SRGB8 + GL_FRAMEBUFFER_SRGB)
+### Exercice 3.2 — Correction gamma automatique OpenGL
 
-OpenGL peut gérer automatiquement les conversions gamma. C'est la méthode utilisée dans notre implémentation finale.
+Le GPU peut gérer les conversions automatiquement, ce qui évite les `pow()` dans le shader. C'est la méthode utilisée dans l'implémentation finale.
 
-**Pour les textures** — utiliser `GL_SRGB8` comme format interne :
+**En entrée** — format interne sRGB pour les textures. Le GPU linéarise automatiquement lors de l'échantillonnage :
+
 ```cpp
 glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, texData);
 ```
-Le GPU linéarise automatiquement les texels lors de l'échantillonnage.
 
-**Pour le framebuffer** — activer la conversion automatique linéaire → sRGB en sortie :
+Note : avec `GL_SRGB8_ALPHA8`, la composante Alpha reste linéaire.
+
+**En sortie** — activer la conversion automatique linéaire → sRGB dans le framebuffer :
+
 ```cpp
 glEnable(GL_FRAMEBUFFER_SRGB);
 ```
-Le GPU compresse gamma automatiquement lors de l'écriture dans le color buffer.
 
-Avec ces deux options, aucun `pow()` n'est nécessaire dans le shader.
+Avec ces deux options, aucune correction manuelle dans le shader n'est nécessaire.
 
 ---
 
-## Illumination hémisphérique ambiante
+## TP 05 — Illumination ambiante hémisphérique
 
-Au lieu d'une couleur ambiante uniforme, on mélange deux couleurs (ciel et sol) en fonction de l'orientation de la normale.
+### 2. Ambient hémisphérique
 
-Le produit scalaire entre la normale N et la direction du ciel donne une valeur dans [-1, +1]. On reparamètre en [0, 1] avec `x * 0.5 + 0.5` puis on utilise `mix()` pour interpoler.
+Au lieu d'appliquer une couleur ambiante uniforme, on mélange deux couleurs : SkyColor (hémisphère haut, le ciel) et GroundColor (hémisphère bas, le sol).
+
+On utilise le produit scalaire entre la normale N du fragment et la direction du ciel (SkyDirection, typiquement (0,1,0)). Ce produit scalaire est dans [-1, +1], on le reparamètre en [0, 1] :
+
+**HemisphereFactor = NdotSky × 0.5 + 0.5**
+
+Puis on interpole avec `mix()` :
 
 ```glsl
 float HemisphereFactor = dot(N, normalize(u_SkyDirection)) * 0.5 + 0.5;
 vec3 ambient = u_material.ambientColor * mix(u_GroundColor, u_SkyColor, HemisphereFactor) * texColor;
 ```
 
-**Uniforms passés depuis le C++ :**
+La couleur finale combine les trois composantes :
+
+```glsl
+vec3 FinalColor = Ambient + Diffuse + Specular;
+FragColor = vec4(FinalColor, 1.0);
+```
+
+Uniforms passés depuis le C++ :
+
 ```cpp
 glUniform3f(glGetUniformLocation(prog, "u_SkyDirection"), 0, 1, 0);
 glUniform3f(glGetUniformLocation(prog, "u_SkyColor"), 0.6f, 0.8f, 1.0f);
 glUniform3f(glGetUniformLocation(prog, "u_GroundColor"), 0.2f, 0.2f, 0.1f);
-```
-
----
-
-## Modèle d'illumination complet — Blinn-Phong
-
-Le résultat final combine les trois composantes :
-
-```glsl
-vec3 FinalColor = Ambient + Diffuse + Specular;
-```
-
-### Diffuse (Lambert)
-```glsl
-vec3 diffuse(vec3 N, vec3 L) {
-    float NdotL = max(dot(N, L), 0.0);
-    return NdotL * u_light.diffuseColor * u_material.diffuseColor;
-}
-```
-
-### Spéculaire (Blinn-Phong)
-Utilise le half-vector H = normalize(L + V) au lieu du vecteur réfléchi R.
-```glsl
-vec3 specular(vec3 N, vec3 L, vec3 V) {
-    vec3 H = normalize(L + V);
-    float NdotH = max(dot(N, H), 0.0);
-    return pow(NdotH, u_material.shininess) * u_light.specularColor * u_material.specularColor;
-}
-```
-
-Le spéculaire n'est calculé que si la face est éclairée (`NdotL > 0`).
-
----
-
-## Vertex Shader final
-
-```glsl
-#version 330 core
-
-in vec3 a_position;
-in vec3 a_normal;
-in vec2 a_texcoords;
-
-out vec3 v_Position;
-out vec3 v_Normal;
-out vec2 v_TexCoords;
-
-uniform mat4 u_Model;
-uniform mat4 u_View;
-uniform mat4 u_Projection;
-
-void main() {
-    vec4 worldPos = u_Model * vec4(a_position, 1.0);
-    v_Position = worldPos.xyz;
-    v_Normal = mat3(u_Model) * a_normal;
-    v_TexCoords = a_texcoords;
-    gl_Position = u_Projection * u_View * worldPos;
-}
-```
-
-## Fragment Shader final
-
-```glsl
-#version 330 core
-
-in vec3 v_Position;
-in vec3 v_Normal;
-in vec2 v_TexCoords;
-
-out vec4 FragColor;
-
-struct Light {
-    vec3 direction;
-    vec3 diffuseColor;
-    vec3 specularColor;
-};
-
-struct Material {
-    vec3 ambientColor;
-    vec3 diffuseColor;
-    vec3 specularColor;
-    float shininess;
-};
-
-uniform Light u_light;
-uniform Material u_material;
-uniform vec3 u_CameraPos;
-uniform sampler2D u_diffuseMap;
-
-uniform vec3 u_SkyDirection;
-uniform vec3 u_SkyColor;
-uniform vec3 u_GroundColor;
-
-vec3 diffuse(vec3 N, vec3 L) {
-    float NdotL = max(dot(N, L), 0.0);
-    return NdotL * u_light.diffuseColor * u_material.diffuseColor;
-}
-
-vec3 specular(vec3 N, vec3 L, vec3 V) {
-    vec3 H = normalize(L + V);
-    float NdotH = max(dot(N, H), 0.0);
-    return pow(NdotH, u_material.shininess) * u_light.specularColor * u_material.specularColor;
-}
-
-void main() {
-    vec3 N = normalize(v_Normal);
-    vec3 L = normalize(-u_light.direction);
-    vec3 V = normalize(u_CameraPos - v_Position);
-
-    vec3 texColor = texture(u_diffuseMap, v_TexCoords).rgb;
-
-    float HemisphereFactor = dot(N, normalize(u_SkyDirection)) * 0.5 + 0.5;
-    vec3 ambient = u_material.ambientColor * mix(u_GroundColor, u_SkyColor, HemisphereFactor) * texColor;
-
-    vec3 diff = diffuse(N, L) * texColor;
-
-    vec3 spec = vec3(0.0);
-    if (dot(N, L) > 0.0) {
-        spec = specular(N, L, V);
-    }
-
-    FragColor = vec4(ambient + diff + spec, 1.0);
-}
 ```
 
 ---
@@ -287,3 +351,7 @@ cmake ..
 make
 cd .. && ./build/tp_final
 ```
+
+Contrôles :
+- Clic gauche + glisser → rotation de la caméra
+- Molette → zoom avant/arrière
