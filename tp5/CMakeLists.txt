@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(tp4)
+project(tp5)
 
 # La norme C++ à utiliser
 set(CMAKE_CXX_STANDARD 11)
@@ -10,9 +10,9 @@ find_package(glfw3 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
 # Indique le fichier source à compiler
-add_executable(tp4 tp4.cpp common/GLShader.cpp)
+add_executable(tp5 tp5.cpp common/GLShader.cpp)
 
-target_include_directories(tp4 PRIVATE common)
+target_include_directories(tp5 PRIVATE common)
 
 # Lie (link) notre exécutable avec GLFW et OpenGL
-target_link_libraries(tp4 PRIVATE glfw OpenGL::GL)
+target_link_libraries(tp5 PRIVATE glfw OpenGL::GL)
