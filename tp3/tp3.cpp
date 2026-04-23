@@ -204,57 +204,78 @@ void Terminate() {
 }
 
 void Render(float time) {
-    glClearColor(0.2f, 0.3f, 0.4f, 1.0f);
+    glClearColor(0.1f, 0.1f, 0.15f, 1.0f); // Fond un peu plus sombre pour bien voir la lumière
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     GLuint basicProgram = g_BasicShader.GetProgram();
     glUseProgram(basicProgram);
 
-    // Matrices communes
+    // --- Calcul des Matrices Communes ---
     float view[16], projection[16];
-    MatrixTranslation(view, 0.0f, 0.0f, -15.0f); // Recule la caméra globale
+    
+    // Caméra reculée de 15 unités (donc positionnée à Z=15 dans le monde)
+    MatrixTranslation(view, 0.0f, 0.0f, -15.0f); 
+    
     float aspect = (float)g_WindowWidth / (float)(g_WindowHeight > 0 ? g_WindowHeight : 1);
     MatrixPerspective(projection, 45.0f, aspect, 0.1f, 100.0f);
 
-    GLint loc_Model = glGetUniformLocation(basicProgram, "u_Model");
     glUniformMatrix4fv(glGetUniformLocation(basicProgram, "u_View"), 1, GL_FALSE, view);
     glUniformMatrix4fv(glGetUniformLocation(basicProgram, "u_Projection"), 1, GL_FALSE, projection);
 
+    // --- Configuration de la Lumière et de la Caméra ---
+    // La caméra est à (0, 0, 15) dans l'espace Monde
+    glUniform3f(glGetUniformLocation(basicProgram, "u_CameraPos"), 0.0f, 0.0f, 15.0f);
+
+    // Lumière blanche venant d'en haut à droite et en avant [cite: 3773, 3792]
+    glUniform3f(glGetUniformLocation(basicProgram, "u_light.direction"), 1.0f, 1.0f, 1.0f); 
+    glUniform3f(glGetUniformLocation(basicProgram, "u_light.ambientColor"), 0.2f, 0.2f, 0.2f);
+    glUniform3f(glGetUniformLocation(basicProgram, "u_light.diffuseColor"), 1.0f, 1.0f, 1.0f);
+    glUniform3f(glGetUniformLocation(basicProgram, "u_light.specularColor"), 1.0f, 1.0f, 1.0f);
+
+    GLint loc_Model = glGetUniformLocation(basicProgram, "u_Model");
+
     // ==========================================
-    // 1. AFFICHAGE DU DRAGON (A droite)
+    // 1. AFFICHAGE DU DRAGON (A droite, matériau type "Plastique Vert")
     // ==========================================
     float modelD[16], transD[16], rotD[16];
     MatrixTranslation(transD, 4.0f, -4.0f, 0.0f); 
     MatrixRotationY(rotD, time * 0.5f);
-    MatrixMultiply(modelD, transD, rotD); // Model = Trans * Rot
+    MatrixMultiply(modelD, transD, rotD);
 
     glUniformMatrix4fv(loc_Model, 1, GL_FALSE, modelD);
+
+    // Envoi des propriétés du matériau [cite: 3896]
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.ambientColor"), 0.05f, 0.2f, 0.05f);
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.diffuseColor"), 0.1f, 0.8f, 0.1f);
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.specularColor"), 1.0f, 1.0f, 1.0f); // Reflet blanc
+    glUniform1f(glGetUniformLocation(basicProgram, "u_material.shininess"), 64.0f); // Brillance moyenne/haute
 
     glBindVertexArray(g_DragonVAO);
     glDrawElements(GL_TRIANGLES, 45000, GL_UNSIGNED_SHORT, (const void*)0);
     glBindVertexArray(0);
 
     // ==========================================
-    // 2. AFFICHAGE DU CUBE (A gauche)
+    // 2. AFFICHAGE DU CUBE (A gauche, matériau type "Métal Rouge")
     // ==========================================
     float modelC[16], transC[16], rX[16], rY[16], rZ[16], temp[16], rotTotal[16];
     MatrixTranslation(transC, -4.0f, 0.0f, 0.0f); 
     
-    // Rotations demandées
-    MatrixRotationY(rY, time);          // Up
-    MatrixRotationX(rX, time * 0.5f);   // Right
-    MatrixRotationZ(rZ, time * 0.25f);  // Forward
-
-    // Multiplications dans l'ordre: Up, puis Right, puis Forward
-    // Mathématiquement: RotTotal = Rz * Rx * Ry
+    MatrixRotationY(rY, time);         
+    MatrixRotationX(rX, time * 0.5f);  
+    MatrixRotationZ(rZ, time * 0.25f); 
     MatrixMultiply(temp, rX, rY);
     MatrixMultiply(rotTotal, rZ, temp);
-    MatrixMultiply(modelC, transC, rotTotal); // Application de la translation
+    MatrixMultiply(modelC, transC, rotTotal);
 
     glUniformMatrix4fv(loc_Model, 1, GL_FALSE, modelC);
 
+    // Envoi des propriétés du matériau [cite: 3896]
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.ambientColor"), 0.2f, 0.05f, 0.05f);
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.diffuseColor"), 0.8f, 0.1f, 0.1f);
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.specularColor"), 1.0f, 0.8f, 0.8f); // Reflet légèrement rouge (métallique)
+    glUniform1f(glGetUniformLocation(basicProgram, "u_material.shininess"), 128.0f); // Très brillant
+
     glBindVertexArray(g_CubeVAO);
-    // On dessine les 36 sommets générés sans EBO
     glDrawArrays(GL_TRIANGLES, 0, 36); 
     glBindVertexArray(0);
 }
