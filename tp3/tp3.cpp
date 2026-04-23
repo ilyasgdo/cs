@@ -22,19 +22,20 @@ const GLushort cube_elements[] = {
     3,2,6, 6,7,3  // top
 };
 
-// Tableau final pour le cube généré avec normales (36 sommets de 6 floats : X,Y,Z, NX,NY,NZ)
-GLfloat g_CubeData[36 * 6]; 
+// Tableau final pour le cube généré (36 sommets de 8 floats : X,Y,Z, NX,NY,NZ, U,V)
+GLfloat g_CubeData[36 * 8]; 
 
 GLShader g_BasicShader;
 
-// Identifiants pour le Dragon
+// Identifiants OpenGL
 GLuint g_DragonVAO = 0; 
 GLuint g_DragonVBO = 0;
 GLuint g_DragonEBO = 0;
 
-// Identifiants pour le Cube
 GLuint g_CubeVAO = 0;
 GLuint g_CubeVBO = 0;
+
+GLuint g_Texture = 0; // Identifiant de la texture
 
 static int g_WindowWidth = 800;
 static int g_WindowHeight = 600;
@@ -55,7 +56,6 @@ void MatrixIdentity(float* m) {
     for(int i=0; i<16; ++i) m[i] = (i%5 == 0) ? 1.0f : 0.0f;
 }
 
-// Multiplication de matrices 4x4 (out = a * b)
 void MatrixMultiply(float* out, const float* a, const float* b) {
     float temp[16];
     for(int c=0; c<4; ++c) {
@@ -100,7 +100,35 @@ void MatrixPerspective(float* m, float fov_deg, float aspect, float near_z, floa
 }
 
 // ==========================================================================
-// --- Exercice 2.1 : Calcul des normales C++ ---
+// --- TP TEXTURE : Création d'un damier ---
+// ==========================================================================
+GLuint CreateCheckerboardTexture() {
+    GLuint texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+
+    // Données d'un damier 2x2 (RVB) - Blanc, Noir, Noir, Blanc
+    GLubyte data[] = { 
+        255, 255, 255,   0,   0,   0,
+        0,   0,   0,     255, 255, 255 
+    };
+
+    // Aligne la mémoire sur 1 octet (crucial sur Mac pour les images non multiples de 4)
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+    // Paramètres de filtrage (Exercice 1 du TP Textures)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // Pixelisé
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // Pixelisé
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    return texID;
+}
+
+// ==========================================================================
+// --- Exercice 2.1 : Calcul des normales et UVs C++ ---
 // ==========================================================================
 void GenerateCubeWithNormals() {
     for(int i=0; i<12; ++i) { // Pour chaque triangle (12 triangles)
@@ -108,31 +136,37 @@ void GenerateCubeWithNormals() {
         int idx1 = cube_elements[i*3+1] * 3;
         int idx2 = cube_elements[i*3+2] * 3;
 
-        // Récupération des 3 points du triangle
         float p0[3] = {cube_vertices[idx0], cube_vertices[idx0+1], cube_vertices[idx0+2]};
         float p1[3] = {cube_vertices[idx1], cube_vertices[idx1+1], cube_vertices[idx1+2]};
         float p2[3] = {cube_vertices[idx2], cube_vertices[idx2+1], cube_vertices[idx2+2]};
 
-        // Calcul des vecteurs U et V
         float u[3] = {p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]};
         float v[3] = {p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]};
 
-        // Produit vectoriel pour la normale (N = U x V)
-        float n[3] = {
-            u[1]*v[2] - u[2]*v[1],
-            u[2]*v[0] - u[0]*v[2],
-            u[0]*v[1] - u[1]*v[0]
-        };
-        // Normalisation
+        float n[3] = { u[1]*v[2] - u[2]*v[1], u[2]*v[0] - u[0]*v[2], u[0]*v[1] - u[1]*v[0] };
         float len = sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
         if(len > 0.0f) { n[0]/=len; n[1]/=len; n[2]/=len; }
 
-        // Ajout des 3 sommets (Positions + Normales) dans le tableau final
+        // Génération des Coordonnées de Texture (UVs)
+        float uvs[3][2];
+        if (i % 2 == 0) { // 1er triangle d'une face
+            uvs[0][0] = 0.0f; uvs[0][1] = 0.0f;
+            uvs[1][0] = 1.0f; uvs[1][1] = 0.0f;
+            uvs[2][0] = 1.0f; uvs[2][1] = 1.0f;
+        } else {          // 2eme triangle d'une face
+            uvs[0][0] = 1.0f; uvs[0][1] = 1.0f;
+            uvs[1][0] = 0.0f; uvs[1][1] = 1.0f;
+            uvs[2][0] = 0.0f; uvs[2][1] = 0.0f;
+        }
+
+        // Ajout des 3 sommets (Positions + Normales + UVs) dans le tableau final
         for(int vtx=0; vtx<3; ++vtx) {
             float* p = (vtx==0) ? p0 : (vtx==1) ? p1 : p2;
-            int base = (i*3 + vtx) * 6;
+            int base = (i*3 + vtx) * 8; // On passe à 8 floats (X,Y,Z, NX,NY,NZ, U,V)
+            
             g_CubeData[base+0] = p[0]; g_CubeData[base+1] = p[1]; g_CubeData[base+2] = p[2];
             g_CubeData[base+3] = n[0]; g_CubeData[base+4] = n[1]; g_CubeData[base+5] = n[2];
+            g_CubeData[base+6] = uvs[vtx][0]; g_CubeData[base+7] = uvs[vtx][1];
         }
     }
 }
@@ -149,9 +183,13 @@ bool Initialise() {
     glCullFace(GL_BACK);     
     glFrontFace(GL_CCW);     
 
+    // Génération de la texture procédurale
+    g_Texture = CreateCheckerboardTexture();
+
     GLuint basicProgram = g_BasicShader.GetProgram();
-    GLint loc_position = glGetAttribLocation(basicProgram, "a_position");
-    GLint loc_normal   = glGetAttribLocation(basicProgram, "a_normal");
+    GLint loc_position  = glGetAttribLocation(basicProgram, "a_position");
+    GLint loc_normal    = glGetAttribLocation(basicProgram, "a_normal");
+    GLint loc_texcoords = glGetAttribLocation(basicProgram, "a_texcoords"); // Nouvel attribut
 
     // --- SETUP DU DRAGON ---
     glGenVertexArrays(1, &g_DragonVAO);
@@ -163,7 +201,7 @@ bool Initialise() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_DragonEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(DragonIndices), DragonIndices, GL_STATIC_DRAW);
 
-    GLsizei strideD = 8 * sizeof(float);
+    GLsizei strideD = 8 * sizeof(float); // X,Y,Z, NX,NY,NZ, U,V
     if (loc_position >= 0) {
         glEnableVertexAttribArray(loc_position);
         glVertexAttribPointer(loc_position, 3, GL_FLOAT, GL_FALSE, strideD, (const void*)0);
@@ -172,10 +210,14 @@ bool Initialise() {
         glEnableVertexAttribArray(loc_normal);
         glVertexAttribPointer(loc_normal, 3, GL_FLOAT, GL_FALSE, strideD, (const void*)(3 * sizeof(float)));
     }
+    if (loc_texcoords >= 0) { // Mapping des UVs du dragon
+        glEnableVertexAttribArray(loc_texcoords);
+        glVertexAttribPointer(loc_texcoords, 2, GL_FLOAT, GL_FALSE, strideD, (const void*)(6 * sizeof(float)));
+    }
     glBindVertexArray(0);
 
     // --- SETUP DU CUBE ---
-    GenerateCubeWithNormals(); // On calcule les normales en C++
+    GenerateCubeWithNormals(); // On calcule les normales et les UVs en C++
 
     glGenVertexArrays(1, &g_CubeVAO);
     glBindVertexArray(g_CubeVAO);
@@ -183,7 +225,7 @@ bool Initialise() {
     glBindBuffer(GL_ARRAY_BUFFER, g_CubeVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(g_CubeData), g_CubeData, GL_STATIC_DRAW);
 
-    GLsizei strideC = 6 * sizeof(float); // X,Y,Z, NX,NY,NZ (pas d'UVs pour le cube)
+    GLsizei strideC = 8 * sizeof(float); // Stride mis à jour à 8 pour le cube
     if (loc_position >= 0) {
         glEnableVertexAttribArray(loc_position);
         glVertexAttribPointer(loc_position, 3, GL_FLOAT, GL_FALSE, strideC, (const void*)0);
@@ -192,6 +234,10 @@ bool Initialise() {
         glEnableVertexAttribArray(loc_normal);
         glVertexAttribPointer(loc_normal, 3, GL_FLOAT, GL_FALSE, strideC, (const void*)(3 * sizeof(float)));
     }
+    if (loc_texcoords >= 0) { // Mapping des UVs du cube
+        glEnableVertexAttribArray(loc_texcoords);
+        glVertexAttribPointer(loc_texcoords, 2, GL_FLOAT, GL_FALSE, strideC, (const void*)(6 * sizeof(float)));
+    }
     glBindVertexArray(0);
 
     return true;
@@ -199,23 +245,26 @@ bool Initialise() {
 
 void Terminate() {
     g_BasicShader.Destroy();
+    glDeleteTextures(1, &g_Texture);
     glDeleteBuffers(1, &g_DragonVBO); glDeleteBuffers(1, &g_DragonEBO); glDeleteVertexArrays(1, &g_DragonVAO);
     glDeleteBuffers(1, &g_CubeVBO); glDeleteVertexArrays(1, &g_CubeVAO);
 }
 
 void Render(float time) {
-    glClearColor(0.1f, 0.1f, 0.15f, 1.0f); // Fond un peu plus sombre pour bien voir la lumière
+    glClearColor(0.1f, 0.1f, 0.15f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     GLuint basicProgram = g_BasicShader.GetProgram();
     glUseProgram(basicProgram);
 
+    // --- Activation de la Texture ---
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_Texture);
+    glUniform1i(glGetUniformLocation(basicProgram, "u_diffuseMap"), 0);
+
     // --- Calcul des Matrices Communes ---
     float view[16], projection[16];
-    
-    // Caméra reculée de 15 unités (donc positionnée à Z=15 dans le monde)
     MatrixTranslation(view, 0.0f, 0.0f, -15.0f); 
-    
     float aspect = (float)g_WindowWidth / (float)(g_WindowHeight > 0 ? g_WindowHeight : 1);
     MatrixPerspective(projection, 45.0f, aspect, 0.1f, 100.0f);
 
@@ -223,10 +272,7 @@ void Render(float time) {
     glUniformMatrix4fv(glGetUniformLocation(basicProgram, "u_Projection"), 1, GL_FALSE, projection);
 
     // --- Configuration de la Lumière et de la Caméra ---
-    // La caméra est à (0, 0, 15) dans l'espace Monde
     glUniform3f(glGetUniformLocation(basicProgram, "u_CameraPos"), 0.0f, 0.0f, 15.0f);
-
-    // Lumière blanche venant d'en haut à droite et en avant [cite: 3773, 3792]
     glUniform3f(glGetUniformLocation(basicProgram, "u_light.direction"), 1.0f, 1.0f, 1.0f); 
     glUniform3f(glGetUniformLocation(basicProgram, "u_light.ambientColor"), 0.2f, 0.2f, 0.2f);
     glUniform3f(glGetUniformLocation(basicProgram, "u_light.diffuseColor"), 1.0f, 1.0f, 1.0f);
@@ -235,27 +281,26 @@ void Render(float time) {
     GLint loc_Model = glGetUniformLocation(basicProgram, "u_Model");
 
     // ==========================================
-    // 1. AFFICHAGE DU DRAGON (A droite, matériau type "Plastique Vert")
+    // 1. AFFICHAGE DU DRAGON
     // ==========================================
     float modelD[16], transD[16], rotD[16];
     MatrixTranslation(transD, 4.0f, -4.0f, 0.0f); 
     MatrixRotationY(rotD, time * 0.5f);
     MatrixMultiply(modelD, transD, rotD);
-
     glUniformMatrix4fv(loc_Model, 1, GL_FALSE, modelD);
 
-    // Envoi des propriétés du matériau [cite: 3896]
+    // Teinte verte modulant la texture blanche et noire
     glUniform3f(glGetUniformLocation(basicProgram, "u_material.ambientColor"), 0.05f, 0.2f, 0.05f);
     glUniform3f(glGetUniformLocation(basicProgram, "u_material.diffuseColor"), 0.1f, 0.8f, 0.1f);
-    glUniform3f(glGetUniformLocation(basicProgram, "u_material.specularColor"), 1.0f, 1.0f, 1.0f); // Reflet blanc
-    glUniform1f(glGetUniformLocation(basicProgram, "u_material.shininess"), 64.0f); // Brillance moyenne/haute
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.specularColor"), 1.0f, 1.0f, 1.0f); 
+    glUniform1f(glGetUniformLocation(basicProgram, "u_material.shininess"), 64.0f);
 
     glBindVertexArray(g_DragonVAO);
     glDrawElements(GL_TRIANGLES, 45000, GL_UNSIGNED_SHORT, (const void*)0);
     glBindVertexArray(0);
 
     // ==========================================
-    // 2. AFFICHAGE DU CUBE (A gauche, matériau type "Métal Rouge")
+    // 2. AFFICHAGE DU CUBE
     // ==========================================
     float modelC[16], transC[16], rX[16], rY[16], rZ[16], temp[16], rotTotal[16];
     MatrixTranslation(transC, -4.0f, 0.0f, 0.0f); 
@@ -269,11 +314,11 @@ void Render(float time) {
 
     glUniformMatrix4fv(loc_Model, 1, GL_FALSE, modelC);
 
-    // Envoi des propriétés du matériau [cite: 3896]
+    // Teinte rouge modulant la texture
     glUniform3f(glGetUniformLocation(basicProgram, "u_material.ambientColor"), 0.2f, 0.05f, 0.05f);
     glUniform3f(glGetUniformLocation(basicProgram, "u_material.diffuseColor"), 0.8f, 0.1f, 0.1f);
-    glUniform3f(glGetUniformLocation(basicProgram, "u_material.specularColor"), 1.0f, 0.8f, 0.8f); // Reflet légèrement rouge (métallique)
-    glUniform1f(glGetUniformLocation(basicProgram, "u_material.shininess"), 128.0f); // Très brillant
+    glUniform3f(glGetUniformLocation(basicProgram, "u_material.specularColor"), 1.0f, 0.8f, 0.8f); 
+    glUniform1f(glGetUniformLocation(basicProgram, "u_material.shininess"), 128.0f);
 
     glBindVertexArray(g_CubeVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36); 
@@ -290,7 +335,7 @@ int main(void) {
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(g_WindowWidth, g_WindowHeight, "TP OpenGL - Dragon & Cube", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(g_WindowWidth, g_WindowHeight, "TP OpenGL - Textures", NULL, NULL);
     if (!window) {
         glfwTerminate();
         return -1;
