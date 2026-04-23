@@ -28,13 +28,17 @@ Le code rendu ne doit contenir **aucun commentaire**. Ni `//`, ni `/* */`, ni `#
 
 ---
 
-## Règle n°3 — Code le plus simple et naturel possible
+## Règle n°3 — Code le plus simple et naturel possible (Style humain)
 
-- Pas de sur-ingénierie, pas d'abstractions inutiles
-- Écrire le code comme un étudiant qui applique directement ce qu'il a vu en cours
-- Privilégier la lisibilité et la concision
-- Pas de design patterns complexes, pas de templates avancés, pas de classes inutiles
-- Si le cours montre une façon de faire, utiliser exactement cette façon
+- Pas de sur-ingénierie, pas d'abstractions inutiles, pas de classes C++ complexes.
+- Écrire le code comme un étudiant qui applique directement ce qu'il a vu en cours.
+- **Style très humain, aéré et "imparfait"** :
+  - Éviter le code compacté à l'extrême (pas de longues lignes de code sur une seule ligne).
+  - Ajouter des sauts de ligne réguliers pour séparer les blocs logiques.
+  - Aligner le code C++ de manière "classique" (ex: accolades type Allman `{` à la ligne sur les fonctions).
+  - Utiliser des noms de variables explicites mais simples (`worldDragon`, pas `mD`).
+  - Tolérer des petites inconsistances naturelles d'espacement, pour ne pas paraître généré par une machine.
+- Si le cours montre une façon de faire, utiliser exactement cette façon (tableaux de `float[16]`, calculs à la main, `struct` en C).
 
 ---
 

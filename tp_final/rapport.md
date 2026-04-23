@@ -9,13 +9,19 @@
 L'exercice demande d'implémenter une fonction multipliant deux matrices homogènes 4×4 stockées en colonnes (column-major). Chaque élément du résultat est la somme des produits ligne×colonne. On utilise un tableau temporaire pour permettre le cas `out == a` ou `out == b`.
 
 ```cpp
-void MatrixMultiply(float* out, const float* a, const float* b) {
+void MatrixMultiply(float* out, const float* a, const float* b)
+{
     float temp[16];
-    for (int c = 0; c < 4; ++c)
-        for (int r = 0; r < 4; ++r)
-            temp[c*4+r] = a[0*4+r]*b[c*4+0] + a[1*4+r]*b[c*4+1]
-                        + a[2*4+r]*b[c*4+2] + a[3*4+r]*b[c*4+3];
-    for (int i = 0; i < 16; ++i) out[i] = temp[i];
+    for(int c = 0; c < 4; c++) {
+        for(int r = 0; r < 4; r++) {
+            temp[c * 4 + r] = a[0*4 + r] * b[c*4 + 0]
+                            + a[1*4 + r] * b[c*4 + 1]
+                            + a[2*4 + r] * b[c*4 + 2]
+                            + a[3*4 + r] * b[c*4 + 3];
+        }
+    }
+    for(int i = 0; i < 16; i++)
+        out[i] = temp[i];
 }
 ```
 
@@ -32,29 +38,30 @@ L'exercice demande de remplacer les matrices de transformation séparées par un
 Dans notre cas, pour le dragon qui tourne autour de Y et est translaté :
 
 ```cpp
-float mD[16], tD[16], rD[16];
-MatrixTranslation(tD, 4, -4, 0);
-MatrixRotationY(rD, time * 0.5f);
-MatrixMultiply(mD, tD, rD);
+float worldDragon[16], tDragon[16], rDragon[16];
+MatrixTranslation(tDragon, 4.0f, -4.0f, 0.0f);
+MatrixRotationY(rDragon, time * 0.5f);
+MatrixMultiply(worldDragon, tDragon, rDragon);
 ```
 
-`mD` est la World Matrix finale envoyée au shader en un seul appel :
+`worldDragon` est la World Matrix finale envoyée au shader en un seul appel :
 
 ```cpp
-glUniformMatrix4fv(glGetUniformLocation(prog, "u_Model"), 1, GL_FALSE, mD);
+glUniformMatrix4fv(glGetUniformLocation(prog, "u_Model"), 1, GL_FALSE, worldDragon);
 ```
 
 Pour le cube avec trois rotations combinées :
 
 ```cpp
-float mC[16], tC[16], rX[16], rY[16], rZ[16], tmp[16], rt[16];
-MatrixTranslation(tC, -4, 0, 0);
-MatrixRotationY(rY, time);
-MatrixRotationX(rX, time * 0.5f);
-MatrixRotationZ(rZ, time * 0.25f);
-MatrixMultiply(tmp, rX, rY);
-MatrixMultiply(rt, rZ, tmp);
-MatrixMultiply(mC, tC, rt);
+float worldCube[16], tCube[16], rotX[16], rotY[16], rotZ[16];
+float tmp[16], tmp2[16];
+MatrixTranslation(tCube, -4.0f, 0.0f, 0.0f);
+MatrixRotationY(rotY, time);
+MatrixRotationX(rotX, time * 0.5f);
+MatrixRotationZ(rotZ, time * 0.25f);
+MatrixMultiply(tmp, rotX, rotY);
+MatrixMultiply(tmp2, rotZ, tmp);
+MatrixMultiply(worldCube, tCube, tmp2);
 ```
 
 Cela réduit à une seule matrice uniform envoyée au GPU au lieu de plusieurs matrices séparées.
@@ -62,30 +69,45 @@ Cela réduit à une seule matrice uniform envoyée au GPU au lieu de plusieurs m
 Les fonctions de base utilisées :
 
 ```cpp
-void MatrixIdentity(float* m) {
-    for (int i = 0; i < 16; ++i) m[i] = (i % 5 == 0) ? 1.0f : 0.0f;
+void MatrixIdentity(float* m)
+{
+    for(int i = 0; i < 16; i++)
+        m[i] = (i % 5 == 0) ? 1.0f : 0.0f;
 }
 
-void MatrixTranslation(float* m, float tx, float ty, float tz) {
-    MatrixIdentity(m); m[12] = tx; m[13] = ty; m[14] = tz;
-}
-
-void MatrixRotationY(float* m, float angle) {
+void MatrixTranslation(float* m, float tx, float ty, float tz)
+{
     MatrixIdentity(m);
-    float c = cos(angle), s = sin(angle);
-    m[0] = c; m[8] = s; m[2] = -s; m[10] = c;
+    m[12] = tx;
+    m[13] = ty;
+    m[14] = tz;
 }
 
-void MatrixRotationX(float* m, float angle) {
+void MatrixRotationY(float* m, float angle)
+{
     MatrixIdentity(m);
-    float c = cos(angle), s = sin(angle);
-    m[5] = c; m[9] = -s; m[6] = s; m[10] = c;
+    float c = cosf(angle);
+    float s = sinf(angle);
+    m[0] = c;  m[8] = s;
+    m[2] = -s; m[10] = c;
 }
 
-void MatrixRotationZ(float* m, float angle) {
+void MatrixRotationX(float* m, float angle)
+{
     MatrixIdentity(m);
-    float c = cos(angle), s = sin(angle);
-    m[0] = c; m[4] = -s; m[1] = s; m[5] = c;
+    float c = cosf(angle);
+    float s = sinf(angle);
+    m[5] = c;  m[9] = -s;
+    m[6] = s;  m[10] = c;
+}
+
+void MatrixRotationZ(float* m, float angle)
+{
+    MatrixIdentity(m);
+    float c = cosf(angle);
+    float s = sinf(angle);
+    m[0] = c; m[4] = -s;
+    m[1] = s; m[5] = c;
 }
 ```
 
@@ -131,34 +153,51 @@ Les 5 étapes de construction :
 
 ```cpp
 void LookAt(float* m, float ex, float ey, float ez,
-            float tx, float ty, float tz,
-            float ux, float uy, float uz) {
-    float fx = -(tx - ex), fy = -(ty - ey), fz = -(tz - ez);
-    float fl = sqrt(fx*fx + fy*fy + fz*fz);
-    fx /= fl; fy /= fl; fz /= fl;
+                       float tx, float ty, float tz,
+                       float ux, float uy, float uz)
+{
+    float fx = -(tx - ex);
+    float fy = -(ty - ey);
+    float fz = -(tz - ez);
+    float fl = sqrtf(fx*fx + fy*fy + fz*fz);
+    fx /= fl;
+    fy /= fl;
+    fz /= fl;
 
-    float rx = uy*fz - uz*fy, ry = uz*fx - ux*fz, rz = ux*fy - uy*fx;
-    float rl = sqrt(rx*rx + ry*ry + rz*rz);
-    rx /= rl; ry /= rl; rz /= rl;
+    float rx = uy * fz - uz * fy;
+    float ry = uz * fx - ux * fz;
+    float rz = ux * fy - uy * fx;
+    float rl = sqrtf(rx*rx + ry*ry + rz*rz);
+    rx /= rl;
+    ry /= rl;
+    rz /= rl;
 
-    float uux = fy*rz - fz*ry, uuy = fz*rx - fx*rz, uuz = fx*ry - fy*rx;
+    float uux = fy * rz - fz * ry;
+    float uuy = fz * rx - fx * rz;
+    float uuz = fx * ry - fy * rx;
 
     MatrixIdentity(m);
-    m[0] = rx;  m[4] = ry;  m[8]  = rz;  m[12] = -(rx*ex + ry*ey + rz*ez);
-    m[1] = uux; m[5] = uuy; m[9]  = uuz; m[13] = -(uux*ex + uuy*ey + uuz*ez);
-    m[2] = fx;  m[6] = fy;  m[10] = fz;  m[14] = -(fx*ex + fy*ey + fz*ez);
-    m[3] = 0;   m[7] = 0;   m[11] = 0;   m[15] = 1;
+    m[0]  = rx;   m[4]  = ry;   m[8]  = rz;
+    m[1]  = uux;  m[5]  = uuy;  m[9]  = uuz;
+    m[2]  = fx;   m[6]  = fy;   m[10] = fz;
+
+    m[12] = -(rx * ex + ry * ey + rz * ez);
+    m[13] = -(uux * ex + uuy * ey + uuz * ez);
+    m[14] = -(fx * ex + fy * ey + fz * ez);
 }
 ```
 
 La View Matrix est passée au Vertex Shader et appliquée à la position uniquement (après la World Matrix, avant la Projection). Les normales restent en espace monde pour les calculs d'illumination.
 
 ```glsl
-void main() {
+void main()
+{
     vec4 worldPos = u_Model * vec4(a_position, 1.0);
-    v_Position = worldPos.xyz;
-    v_Normal = mat3(u_Model) * a_normal;
+    v_Position  = worldPos.xyz;
+
+    v_Normal    = mat3(u_Model) * a_normal;
     v_TexCoords = a_texcoords;
+
     gl_Position = u_Projection * u_View * worldPos;
 }
 ```
